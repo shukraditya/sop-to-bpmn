@@ -17,12 +17,22 @@ BRANCH_LABELS: List[Tuple[re.Pattern, str]] = [
     (re.compile(r"^otherwise\s*[,:.\-]?\s*(.*)", re.I), "Otherwise"),
 ]
 
-# Anywhere in step: a conditional trigger that creates a gateway.
-CONDITIONAL_PATTERN = re.compile(r"\b(if|whether|determine|check)\b", re.I)
+# Anchored to start: a step that introduces a conditional via verb prefix.
+CONDITIONAL_HEAD_PATTERN = re.compile(
+    r"^(check|determine|verify|see|find\s+out)\s+(if|whether)\b", re.I
+)
+
+# Anchored to start: a step beginning with "whether..." (no leading verb).
+WHETHER_HEAD_PATTERN = re.compile(r"^whether\b", re.I)
 
 # Strip leading verbs to derive a clean gateway name.
 CONDITION_STRIP = re.compile(
     r"^(check|determine|verify|see|find\s+out)\s+(if|whether)\s+", re.I
+)
+
+# Continuation cue + body: "Then send email" -> body="send email".
+CONTINUATION_PATTERN = re.compile(
+    r"^(?:then|next|after\s+that|followed\s+by|finally)\s*[,:.\-]?\s*(.*)", re.I
 )
 
 
@@ -63,12 +73,26 @@ def _extract_branch(text: str) -> Optional[Tuple[str, str]]:
     return None
 
 
+def _strip_continuation(text: str) -> Tuple[str, bool]:
+    """If text starts with a continuation cue, return (cue-stripped body, True).
+    Otherwise return (text, False). Empty body counts as no match (fall through)."""
+    m = CONTINUATION_PATTERN.match(text)
+    if m:
+        body = _capitalize(m.group(1).strip())
+        if body:
+            return body, True
+    return text, False
+
+
 def _is_branch(text: str) -> bool:
     return BRANCH_PATTERN.match(text) is not None
 
 
 def _is_conditional(text: str) -> bool:
-    return CONDITIONAL_PATTERN.search(text) is not None
+    text = text.strip()
+    if CONDITIONAL_HEAD_PATTERN.match(text) or WHETHER_HEAD_PATTERN.match(text):
+        return True
+    return text.rstrip(".").endswith("?")
 
 
 class SimpleSOPParser:
@@ -158,6 +182,10 @@ class SimpleSOPParser:
                 self._add_flow(self.current_gateway_id, task_id, condition=label)
                 self.current_branch_tails.append(task_id)
             else:
+                cont_body, is_continuation = _strip_continuation(text)
+                if (is_continuation or step.level > 0) and self.current_branch_tails:
+                    self._chain_to_last_branch_tail(_strip_period(cont_body))
+                    return
                 if is_conditional:
                     print(
                         f"  warning: conditional step {text!r} at merge point; "
@@ -200,6 +228,13 @@ class SimpleSOPParser:
         self.current_gateway_id = None
         self.last_node_id = task_id
         self.state = ParserState.NORMAL
+
+    def _chain_to_last_branch_tail(self, name: str) -> None:
+        """Extend the most recently added branch with another task. Tail moves to it."""
+        task_id = self._add_node(name, NodeType.TASK)
+        tail = self.current_branch_tails[-1]
+        self._add_flow(tail, task_id)
+        self.current_branch_tails[-1] = task_id
 
     def _finalize(self) -> None:
         if self.state == ParserState.AWAITING_BRANCH and self.pending_gateway is not None:

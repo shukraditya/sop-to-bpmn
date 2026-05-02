@@ -73,3 +73,98 @@ def test_gateway_name_strips_check_prefix():
     g = SimpleSOPParser().parse(steps)
     gateway = next(n for n in g.nodes if n.node_type == NodeType.EXCLUSIVE_GATEWAY)
     assert gateway.name == "The issue is billing-related?"
+
+
+def test_mid_sentence_if_treated_as_task():
+    """Steps with `if` mid-sentence should be plain tasks, not stashed gateways."""
+    steps = [
+        _step("Notify the manager if available"),
+        _step("Send response"),
+    ]
+    g = SimpleSOPParser().parse(steps)
+    assert NodeType.EXCLUSIVE_GATEWAY not in {n.node_type for n in g.nodes}
+    task_names = [n.name for n in g.nodes if n.node_type == NodeType.TASK]
+    assert "Notify the manager if available" in task_names
+    assert "Send response" in task_names
+
+
+def test_question_mark_step_is_conditional():
+    """A step ending with '?' should trigger a gateway."""
+    steps = [
+        _step("Receive request"),
+        _step("Is the request urgent?"),
+        _step("If yes, escalate"),
+        _step("If no, queue"),
+        _step("Send acknowledgment"),
+    ]
+    g = SimpleSOPParser().parse(steps)
+    gateways = [n for n in g.nodes if n.node_type == NodeType.EXCLUSIVE_GATEWAY]
+    assert len(gateways) == 1
+    assert gateways[0].name == "Is the request urgent?"
+
+
+def test_continuation_cue_chains_to_last_branch_tail():
+    """`Then ...` after a branch step should chain to that branch's tail, not be the merge."""
+    steps = [
+        _step("Determine whether to refund"),
+        _step("If yes, process the refund"),
+        _step("Then send confirmation email"),
+        _step("If no, archive the request"),
+        _step("Close the case"),
+    ]
+    g = SimpleSOPParser().parse(steps)
+
+    refund = next(n for n in g.nodes if n.name == "Process the refund")
+    confirm = next(n for n in g.nodes if n.name == "Send confirmation email")
+    archive = next(n for n in g.nodes if n.name == "Archive the request")
+    close = next(n for n in g.nodes if n.name == "Close the case")
+
+    flows_to_confirm = [f for f in g.flows if f.target_id == confirm.id]
+    assert len(flows_to_confirm) == 1
+    assert flows_to_confirm[0].source_id == refund.id
+    assert flows_to_confirm[0].condition is None
+
+    flows_to_close = [f for f in g.flows if f.target_id == close.id]
+    assert {f.source_id for f in flows_to_close} == {confirm.id, archive.id}
+
+
+def test_indent_chains_to_last_branch_tail():
+    """A step with level > 0 after a branch should chain to that branch's tail."""
+    steps = [
+        _step("Determine whether to refund"),
+        _step("If yes, process the refund"),
+        RawStep(level=1, text="Send confirmation email", original_number="a."),
+        _step("If no, archive"),
+        _step("Close"),
+    ]
+    g = SimpleSOPParser().parse(steps)
+
+    refund = next(n for n in g.nodes if n.name == "Process the refund")
+    confirm = next(n for n in g.nodes if n.name == "Send confirmation email")
+
+    flows_to_confirm = [f for f in g.flows if f.target_id == confirm.id]
+    assert len(flows_to_confirm) == 1
+    assert flows_to_confirm[0].source_id == refund.id
+
+
+def test_multiple_continuations_stack_within_branch():
+    """Two consecutive `Then ...` lines should chain X -> Y -> Z within the same branch."""
+    steps = [
+        _step("Check if escalated"),
+        _step("If yes, do X"),
+        _step("Then do Y"),
+        _step("Then do Z"),
+        _step("If no, do W"),
+        _step("Close"),
+    ]
+    g = SimpleSOPParser().parse(steps)
+
+    x = next(n for n in g.nodes if n.name == "Do X")
+    y = next(n for n in g.nodes if n.name == "Do Y")
+    z = next(n for n in g.nodes if n.name == "Do Z")
+    close = next(n for n in g.nodes if n.name == "Close")
+
+    assert next(f for f in g.flows if f.target_id == y.id).source_id == x.id
+    assert next(f for f in g.flows if f.target_id == z.id).source_id == y.id
+    sources_to_close = {f.source_id for f in g.flows if f.target_id == close.id}
+    assert z.id in sources_to_close  # Z (not Y) is the Yes-branch tail at merge
