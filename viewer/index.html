@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>BPMN viewer</title>
+  <link rel="stylesheet" href="https://unpkg.com/bpmn-js@18.15.0/dist/assets/bpmn-js.css">
+  <style>
+    html, body { margin: 0; height: 100%; font-family: -apple-system, system-ui, sans-serif; }
+    #canvas { height: 100vh; }
+    #status {
+      position: fixed; top: 8px; right: 12px;
+      padding: 4px 10px; background: rgba(0,0,0,0.65); color: #fff;
+      border-radius: 4px; font-size: 12px; max-width: 60%;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #status.error { background: #c33; }
+  </style>
+</head>
+<body>
+  <div id="canvas"></div>
+  <div id="status">loading…</div>
+  <script src="https://unpkg.com/bpmn-js@18.15.0/dist/bpmn-viewer.production.min.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const url = params.get('url') || '../examples/output.bpmn';
+    const status = document.getElementById('status');
+    const viewer = new BpmnJS({ container: '#canvas' });
+
+    fetch(url, { cache: 'no-store' })
+      .then(r => {
+        if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+        return r.text();
+      })
+      .then(xml => viewer.importXML(xml))
+      .then(() => {
+        viewer.get('canvas').zoom('fit-viewport');
+        status.textContent = url;
+      })
+      .catch(err => {
+        status.classList.add('error');
+        status.textContent = 'failed: ' + err.message;
+      });
+  </script>
+</body>
+</html>
