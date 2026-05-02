@@ -168,3 +168,87 @@ def test_multiple_continuations_stack_within_branch():
     assert next(f for f in g.flows if f.target_id == z.id).source_id == y.id
     sources_to_close = {f.source_id for f in g.flows if f.target_id == close.id}
     assert z.id in sources_to_close  # Z (not Y) is the Yes-branch tail at merge
+
+
+def test_nested_conditional_with_explicit_inner_merge():
+    """Inner gateway nested inside outer Yes branch; both gateways merge cleanly."""
+    steps = [
+        _step("Receive request"),
+        _step("Check if it's billing"),
+        _step("If yes, route to billing queue"),
+        _step("Check if customer is overdue"),       # nested
+        _step("If yes, escalate to manager"),
+        _step("If no, file as standard"),
+        _step("Send confirmation"),                  # merges inner
+        _step("If no, route to general support"),    # outer No branch
+        _step("Close case"),                         # merges outer
+    ]
+    g = SimpleSOPParser().parse(steps)
+
+    gateways = [n for n in g.nodes if n.node_type == NodeType.EXCLUSIVE_GATEWAY]
+    assert len(gateways) == 2
+    outer = next(n for n in gateways if "billing" in n.name.lower())
+    inner = next(n for n in gateways if "overdue" in n.name.lower())
+
+    outer_outflows = [f for f in g.flows if f.source_id == outer.id]
+    assert {f.condition for f in outer_outflows} == {"Yes", "No"}
+    inner_outflows = [f for f in g.flows if f.source_id == inner.id]
+    assert {f.condition for f in inner_outflows} == {"Yes", "No"}
+
+    # Route to billing flows into inner gateway (becomes the source of nested gateway).
+    route_to_billing = next(n for n in g.nodes if n.name == "Route to billing queue")
+    inner_inflows = [f for f in g.flows if f.target_id == inner.id]
+    assert [f.source_id for f in inner_inflows] == [route_to_billing.id]
+
+    # Inner Yes+No tails merge into Send confirmation.
+    send_conf = next(n for n in g.nodes if n.name == "Send confirmation")
+    flows_to_send = [f for f in g.flows if f.target_id == send_conf.id]
+    assert len(flows_to_send) == 2
+
+    # Outer merge: Send confirmation (Yes path through inner) + Route to general (No) → Close.
+    close = next(n for n in g.nodes if n.name == "Close case")
+    route_general = next(n for n in g.nodes if n.name == "Route to general support")
+    flows_to_close = [f for f in g.flows if f.target_id == close.id]
+    assert {f.source_id for f in flows_to_close} == {send_conf.id, route_general.id}
+
+
+def test_nested_open_branches_drain_to_end():
+    """Nested gateway with no merge: every open tail (inner Yes/No + outer No-less path) → End."""
+    steps = [
+        _step("Check if billing"),
+        _step("If yes, do A"),
+        _step("Check if X"),
+        _step("If yes, do B"),
+        _step("If no, do C"),
+        # no merge — process ends here
+    ]
+    g = SimpleSOPParser().parse(steps)
+
+    end_node = next(n for n in g.nodes if n.node_type == NodeType.END)
+    end_sources = {f.source_id for f in g.flows if f.target_id == end_node.id}
+    do_b = next(n for n in g.nodes if n.name == "Do B")
+    do_c = next(n for n in g.nodes if n.name == "Do C")
+    assert {do_b.id, do_c.id}.issubset(end_sources)
+
+
+def test_nested_orphan_inner_demoted_to_task():
+    """Inner conditional with no following branches is demoted; outer continues normally."""
+    steps = [
+        _step("Check if billing"),
+        _step("If yes, do A"),
+        _step("Check if X"),       # inner conditional (will be demoted — no inner branches)
+        _step("Send confirmation"),  # not a branch — triggers demote, then becomes outer merge
+        _step("If no, do Z"),        # outer No
+        _step("Close"),              # outer merge
+    ]
+    g = SimpleSOPParser().parse(steps)
+
+    # Only outer gateway survives — inner was demoted to a task.
+    gateways = [n for n in g.nodes if n.node_type == NodeType.EXCLUSIVE_GATEWAY]
+    assert len(gateways) == 1
+    assert "billing" in gateways[0].name.lower()
+
+    # The demoted "X" task lives between A and Send confirmation in the Yes branch.
+    do_a = next(n for n in g.nodes if n.name == "Do A")
+    x_task = next(n for n in g.nodes if n.name == "X")
+    assert next(f for f in g.flows if f.target_id == x_task.id).source_id == do_a.id
