@@ -6,7 +6,7 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
-from reader import DocxReader
+from sop_bpmn.reader import DocxReader
 
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "input_sop.docx"

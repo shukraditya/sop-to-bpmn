@@ -4,9 +4,9 @@ import argparse
 import sys
 from pathlib import Path
 
-from generator import BPMNGenerator
-from parser import SimpleSOPParser
-from reader import DocxReader
+from .generator import BPMNGenerator
+from .parser import SimpleSOPParser
+from .reader import DocxReader
 
 
 def run(input_path: Path, output_path: Path) -> int:

@@ -1,0 +1,23 @@
+[project]
+name = "sop-bpmn"
+version = "0.1.0"
+description = "Convert structured SOP .docx documents to BPMN 2.0 XML."
+requires-python = ">=3.10"
+dependencies = [
+    "python-docx==0.8.11",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.3",
+]
+
+[project.scripts]
+sop-bpmn = "sop_bpmn.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["sop_bpmn*"]

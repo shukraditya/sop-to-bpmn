@@ -5,7 +5,7 @@ import sys
 from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
-from models import NodeType, ProcessGraph, ProcessNode, RawStep, SequenceFlow
+from .models import NodeType, ProcessGraph, ProcessNode, RawStep, SequenceFlow
 
 # Anchored to start: a branch step ("If yes...", "If no...", "Otherwise...").
 BRANCH_PATTERN = re.compile(r"^(if\s+yes|if\s+no|otherwise)\b", re.I)
@@ -268,27 +268,3 @@ class SimpleSOPParser:
             self.state = ParserState.NORMAL
         else:
             self._add_flow(self.last_node_id, end_id)
-
-
-def _example_steps() -> List[RawStep]:
-    return [
-        RawStep(level=0, text="Receive customer support email", original_number="1."),
-        RawStep(level=0, text="Check if the issue is billing-related", original_number="2."),
-        RawStep(level=0, text="If yes, assign to Billing Queue", original_number="3."),
-        RawStep(level=0, text="If no, assign to General Support Queue", original_number="4."),
-        RawStep(level=0, text="Send acknowledgment email to customer", original_number="5."),
-        RawStep(level=0, text="Close the triage step", original_number="6."),
-    ]
-
-
-if __name__ == "__main__":
-    steps = _example_steps()
-    graph = SimpleSOPParser().parse(steps)
-
-    print(f"Nodes ({len(graph.nodes)}):")
-    for n in graph.nodes:
-        print(f"  {n.id:<14} [{n.node_type.value}] {n.name!r}")
-    print(f"\nFlows ({len(graph.flows)}):")
-    for f in graph.flows:
-        cond = f" [{f.condition}]" if f.condition else ""
-        print(f"  {f.id:<8} {f.source_id} -> {f.target_id}{cond}")

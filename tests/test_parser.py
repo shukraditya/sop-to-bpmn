@@ -1,7 +1,7 @@
 """Tests for SimpleSOPParser: state machine + deferred-gateway pattern."""
 
-from models import NodeType, RawStep
-from parser import SimpleSOPParser
+from sop_bpmn.models import NodeType, RawStep
+from sop_bpmn.parser import SimpleSOPParser
 
 
 def _step(text: str) -> RawStep:

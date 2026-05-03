@@ -2,8 +2,8 @@
 
 import xml.etree.ElementTree as ET
 
-from generator import BPMNGenerator
-from models import NodeType, ProcessGraph, ProcessNode, SequenceFlow
+from sop_bpmn.generator import BPMNGenerator
+from sop_bpmn.models import NodeType, ProcessGraph, ProcessNode, SequenceFlow
 
 NS = {
     "b": "http://www.omg.org/spec/BPMN/20100524/MODEL",

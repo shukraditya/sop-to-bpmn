@@ -5,7 +5,7 @@ from typing import List, Optional, Tuple
 
 from docx import Document
 
-from models import RawStep
+from .models import RawStep
 
 # Manually-typed numbering patterns, in order of specificity.
 # Each pattern: (regex, level). Group(1) = original_number, group(2) = body text.
@@ -24,10 +24,6 @@ def _parse_numbering(text: str) -> Optional[Tuple[int, str, str]]:
         if m:
             return level, m.group(1), m.group(2).strip()
     return None
-
-
-def _has_numpr(paragraph) -> bool:
-    return paragraph._p.find(f".//{NUMPR_NS}numPr") is not None
 
 
 def _read_ilvl(paragraph) -> Optional[int]:
@@ -88,37 +84,3 @@ class DocxReader:
 
         all_text = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
         return [RawStep(level=0, text=t, original_number="") for t in all_text]
-
-
-def _inspect(path: str) -> None:
-    """Print a day-1 diagnostic on the .docx — paragraph text + numPr presence."""
-    doc = Document(path)
-    print(f"=== Inspecting {path} ===")
-    print(f"Total paragraphs: {len(doc.paragraphs)}")
-    auto_count = 0
-    for i, p in enumerate(doc.paragraphs):
-        text = p.text
-        numpr = _has_numpr(p)
-        if numpr:
-            auto_count += 1
-        print(f"  [{i:2}] numPr={numpr} text={text!r}")
-    if auto_count:
-        print(
-            f"\nNOTE: {auto_count} paragraph(s) have numPr (auto-numbered) — "
-            "extracted via the numPr path with synthesized numbering."
-        )
-
-
-if __name__ == "__main__":
-    import sys
-
-    path = sys.argv[1] if len(sys.argv) > 1 else "examples/input_sop.docx"
-
-    _inspect(path)
-
-    print()
-    reader = DocxReader()
-    steps = reader.extract_steps(path)
-    print(f"Extracted {len(steps)} step(s):")
-    for i, s in enumerate(steps):
-        print(f"  [{i:2}] level={s.level} num={s.original_number!r} text={s.text!r}")

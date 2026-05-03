@@ -3,7 +3,7 @@
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from main import run
+from sop_bpmn.cli import run
 
 EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "input_sop.docx"
 

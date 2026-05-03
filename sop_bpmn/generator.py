@@ -3,7 +3,7 @@
 from collections import defaultdict
 from typing import Callable, Dict, List, Tuple
 
-from models import NodeType, ProcessGraph, ProcessNode, SequenceFlow
+from .models import NodeType, ProcessGraph
 
 X_START = 150
 X_STEP = 200
@@ -175,39 +175,3 @@ class BPMNGenerator:
         lines.append("    </bpmndi:BPMNPlane>")
         lines.append("  </bpmndi:BPMNDiagram>\n")
         return "\n".join(lines)
-
-
-def _build_example_graph() -> ProcessGraph:
-    nodes = [
-        ProcessNode("StartEvent_1", "Triage started", NodeType.START),
-        ProcessNode("Task_1", "Receive customer support email", NodeType.TASK),
-        ProcessNode("Gateway_1", "Billing-related?", NodeType.EXCLUSIVE_GATEWAY),
-        ProcessNode("Task_3", "Assign to Billing Queue", NodeType.TASK),
-        ProcessNode("Task_4", "Assign to General Support Queue", NodeType.TASK),
-        ProcessNode("Task_5", "Send acknowledgment email to customer", NodeType.TASK),
-        ProcessNode("Task_6", "Close the triage step", NodeType.TASK),
-        ProcessNode("EndEvent_1", "Triage completed", NodeType.END),
-    ]
-    flows = [
-        SequenceFlow("Flow_1", "StartEvent_1", "Task_1"),
-        SequenceFlow("Flow_2", "Task_1", "Gateway_1"),
-        SequenceFlow("Flow_3", "Gateway_1", "Task_3", condition="Yes"),
-        SequenceFlow("Flow_4", "Gateway_1", "Task_4", condition="No"),
-        SequenceFlow("Flow_5", "Task_3", "Task_5"),
-        SequenceFlow("Flow_6", "Task_4", "Task_5"),
-        SequenceFlow("Flow_7", "Task_5", "Task_6"),
-        SequenceFlow("Flow_8", "Task_6", "EndEvent_1"),
-    ]
-    return ProcessGraph(nodes=nodes, flows=flows)
-
-
-if __name__ == "__main__":
-    import os
-
-    graph = _build_example_graph()
-    xml = BPMNGenerator().generate(graph)
-    out_path = os.path.join(os.path.dirname(__file__) or ".", "examples", "output.bpmn")
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    with open(out_path, "w") as f:
-        f.write(xml)
-    print(f"Wrote {out_path} ({len(xml)} bytes)")
